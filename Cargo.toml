@@ -11,8 +11,6 @@ license = "Apache-2.0"
 midnight-proofs = { path = "../midnight-zk/proofs", package = "midnight-proofs", default-features = false, features = ["bits", "cost-estimator", "circuit-params"] }
 midnight-curves = { path = "../midnight-zk/curves" }
 
-# Keep atms-halo2 for ATMS circuit examples (optional, uses old halo2_proofs)
-atms-halo2 = { git = "https://github.com/input-output-hk/sidechains-zk/", rev = "e93d2ac", package = "atms-halo2", optional = true }
 
 # Curve and field libraries (already compatible)
 halo2curves = { version = "0.7.0" }
@@ -33,14 +31,6 @@ rand_chacha = "0.3.1"
 
 [features]
 plutus_debug = []
-# ATMS circuits use old halo2_proofs via atms-halo2 dependency - enable with caution
-atms_circuits = ["atms-halo2"]
-
-# ATMS examples require the atms_circuits feature
-[[example]]
-name = "atms"
-required-features = ["atms_circuits"]
 
 [[example]]
-name = "atms_with_lookups"
-required-features = ["atms_circuits"]
+name = "trashcan_test"

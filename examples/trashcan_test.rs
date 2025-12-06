@@ -1,26 +1,24 @@
 use midnight_curves::{Bls12, Fq, G1Projective};
-use blstrs::Base;
 use midnight_proofs::{
+    halo2curves::group::GroupEncoding,
     plonk::{
         ProvingKey, VerifyingKey, create_proof, k_from_circuit, keygen_pk, keygen_vk, prepare,
     },
     poly::{
-        commitment::Guard, commitment::PolynomialCommitmentScheme,
+        commitment::PolynomialCommitmentScheme, commitment::Guard,
         kzg::KZGCommitmentScheme, kzg::params::ParamsKZG, kzg::params::ParamsVerifierKZG,
     },
     transcript::{CircuitTranscript, Transcript},
 };
-use halo2curves::group::GroupEncoding;
 use log::info;
-use plutus_midnight_verifier_gen::plutus_gen::extraction::ExtractKZG;
 use plutus_midnight_verifier_gen::{
-    circuits::atms_circuit::{AtmsSignatureCircuit, prepare_test_signatures},
+    circuits::trashcan_test_circuit::TrashcanTestCircuit,
     plutus_gen::{
-        adjusted_types::CardanoFriendlyState, generate_plinth_verifier,
+        adjusted_types::CardanoFriendlyState, extraction::ExtractKZG, generate_plinth_verifier,
         proof_serialization::export_public_inputs, proof_serialization::serialize_proof,
     },
 };
-use rand::prelude::StdRng;
+use rand::rngs::StdRng;
 use rand_core::SeedableRng;
 use std::env;
 use std::fs::File;
@@ -31,22 +29,16 @@ fn main() {
 
     match &args[1..] {
         [] => {
-            compile_atms_circuit::<KZGCommitmentScheme<Bls12>>();
-        }
-        [command] if command == "gwc_kzg" => {
-            compile_atms_circuit::<GwcKZGCommitmentScheme<Bls12>>();
+            compile_trashcan_test_circuit::<KZGCommitmentScheme<Bls12>>();
         }
         _ => {
             println!("Usage:");
-            println!("- to run the example: `cargo run --example example_name`");
-            println!(
-                "- to run the example using the GWC19 version of multi-open KZG, run: `cargo run --example example_name gwc_kzg`"
-            );
+            println!("- to run the example: `cargo run --example trashcan_test`");
         }
     }
 }
 
-pub fn compile_atms_circuit<
+pub fn compile_trashcan_test_circuit<
     S: PolynomialCommitmentScheme<
             Fq,
             Commitment = G1Projective,
@@ -54,35 +46,48 @@ pub fn compile_atms_circuit<
             VerifierParameters = ParamsVerifierKZG<Bls12>,
         > + ExtractKZG,
 >() {
-    let seed = [0u8; 32]; // UNSAFE, constant seed is used for testing purposes
-    let mut rng: StdRng = SeedableRng::from_seed(seed);
+    let mut rng = StdRng::seed_from_u64(42);
 
-    let num_parties = 6;
-    let threshold = 3;
-    let msg = Base::from(42u64);
+    // Create circuit with valid values (both trashcan constraints satisfied)
+    let a = Fq::from(42);
+    let b = Fq::from(42); // Equal to a - trashcan 1 satisfied
+    let c = Fq::from(100);
+    let d = Fq::from(100); // Equal to c - trashcan 2 satisfied
 
-    let (signatures, pks, pks_comm) =
-        prepare_test_signatures(num_parties, threshold, msg, &mut rng);
+    // Public inputs (3 to match test structure)
+    let p1 = Fq::from(1);
+    let p2 = Fq::from(2);
+    let p3 = Fq::from(3);
 
-    let circuit = AtmsSignatureCircuit {
-        signatures,
-        pks,
-        pks_comm,
-        msg,
-        threshold: Base::from(threshold as u64),
-    };
+    let circuit = TrashcanTestCircuit { a, b, c, d, p1, p2, p3 };
 
     let k: u32 = k_from_circuit(&circuit);
+    info!("Circuit k: {}", k);
+
     let kzg_params: ParamsKZG<Bls12> = ParamsKZG::<Bls12>::unsafe_setup(k, rng.clone());
     let vk: VerifyingKey<Fq, S> = keygen_vk(&kzg_params, &circuit).unwrap();
+
+    // Log trashcan information
+    info!("VK num_trashcans: {}", vk.cs().trashcans().len());
+    for (i, trash) in vk.cs().trashcans().iter().enumerate() {
+        info!(
+            "Trashcan {}: {} with {} constraint expressions",
+            i + 1,
+            trash.name(),
+            trash.constraint_expressions().len()
+        );
+    }
+
     let pk: ProvingKey<Fq, S> = keygen_pk(vk.clone(), &circuit).unwrap();
 
-    // no instances, just dummy 42 to make prover and verifier happy
-    let instances: &[&[&[Fq]]] = &[&[&[pks_comm, msg, Base::from(threshold as u64)]]];
+    // Public inputs (3 to match test structure)
+    let public_inputs_vec = vec![p1, p2, p3];
+    let instances: &[&[&[Fq]]] = &[&[&public_inputs_vec]];
     info!("Public inputs: {:?}", instances);
 
     let instances_file =
-        "./plutus-verifier/plutus-halo2/test/Generic/serialized_public_input.hex".to_string();
+        "./plutus-verifier/plutus-halo2/test/Generic/serialized_public_input_trashcan.hex"
+            .to_string();
     let mut output = File::create(instances_file).expect("failed to create instances file");
     export_public_inputs(instances, &mut output);
 
@@ -100,12 +105,14 @@ pub fn compile_atms_circuit<
     .expect("proof generation should not fail");
 
     let proof = transcript.finalize();
-    info!("proof size {:?}", proof.len());
 
+    info!("Proof size: {} bytes", proof.len());
+
+    // Verify with Rust verifier first
     let mut transcript_verifier: CircuitTranscript<CardanoFriendlyState> =
         CircuitTranscript::<CardanoFriendlyState>::init_from_bytes(&proof);
 
-    let verifier = prepare::<_, S, CircuitTranscript<CardanoFriendlyState>>(
+    let verifier = prepare::<_, _, CircuitTranscript<CardanoFriendlyState>>(
         &vk,
         instances,
         &mut transcript_verifier,
@@ -114,14 +121,20 @@ pub fn compile_atms_circuit<
 
     verifier
         .verify(&kzg_params.verifier_params())
-        .expect("verify failed");
+        .expect("Rust verification failed");
 
+    info!("✅ Rust verification PASSED");
+
+    // Serialize proof for Haskell verifier
     serialize_proof(
-        "./plutus-verifier/plutus-halo2/test/Generic/serialized_proof.json".to_string(),
+        "./plutus-verifier/plutus-halo2/test/Generic/serialized_proof_trashcan.json".to_string(),
         proof,
     )
     .unwrap();
 
+    // Generate Plutus verifier
     generate_plinth_verifier(&kzg_params, &vk, instances, |a| hex::encode(a.to_bytes()))
         .expect("Plinth verifier generation failed");
+
+    info!("✅ Generated Plutus verifier with {} trashcans", vk.cs().trashcans().len());
 }

@@ -1,7 +1,10 @@
-# Plutus Halo2 Verifier
+# Plutus Midnight Verifier Generator
 
-A Rust tool that generates Plutus verifiers for Halo2 circuits, enabling verification of proofs on the Cardano
-blockchain.
+A Rust tool that generates Plutus verifiers for Halo2 circuits using midnight-proofs, enabling verification of proofs on the Cardano blockchain.
+
+**Fork of**: [input-output-hk/plutus-halo2-verifier-gen](https://github.com/input-output-hk/plutus-halo2-verifier-gen)
+**Original author**: [adamsmo](https://github.com/adamsmo) (Input Output Global)
+**Modifications**: midnight-proofs compatibility (PSE halo2 v0.3.0 fork)
 
 > ### ⚠️ Important Disclaimer & Acceptance of Risk
 >
@@ -12,15 +15,23 @@ blockchain.
 
 ## Overview
 
-This project bridges Rust-based Halo2 implementations with Plutus smart contracts on Cardano. It
-extracts verification keys and circuit structures from Halo2 circuits and generates corresponding Plinth verifier code
-that can validate proofs on-chain.
+This project bridges Rust-based Halo2 implementations with Plutus smart contracts on Cardano. It extracts verification keys and circuit structures from Halo2 circuits implemented with **midnight-proofs** and generates corresponding Plinth verifier code that can validate proofs on-chain.
+
+### Changes from Original
+
+This fork replaces IOG's `halo2_proofs` (v0.2.0 fork) with `midnight-proofs` (PSE halo2 v0.3.0 fork). Key changes:
+
+1. **Library migration**: All dependencies migrated to midnight-proofs types (`midnight_curves::Fq`, `midnight-proofs::plonk::VerifyingKey`)
+2. **Transcript compatibility**: Added `trash_challenge` support to match midnight-proofs Fiat-Shamir sequence
+3. **Trashcan support**: Full implementation of trashcan (additive selector) constraint evaluation and query generation
+
 
 ## Features
 
 - **Circuit-Agnostic Generation**: Automatically generates Plinth verifiers for various Halo2 circuits
 - **Template-Based Code Generation**: Uses Handlebars templates for flexible verifier generation
-- **Multiple Circuit Types**: Supports basic Halo2 circuits, lookup tables, and custom gates
+- **Multiple Circuit Types**: Supports basic Halo2 circuits, lookup tables, custom gates, and trashcan constraints
+- **midnight-proofs Native**: Extracts circuit structure directly from midnight-proofs VK without type conversion
 
 ## Architecture
 
@@ -64,13 +75,13 @@ The prototype consists of two main parts:
 sh <(curl -L https://nixos.org/nix/install)
 ```
 
-2. Modify the conf file `/etc/nix/nix.conf` by adding
+2. Modify/Create the conf file `/etc/nix/nix.conf` by adding
 
 ```
 substituters = https://cache.nixos.org https://cache.iog.io
 trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
 experimental-features = nix-command flakes
-allow-import-from-derivation = "true"
+allow-import-from-derivation = true
 ```
 
 3. The contract can be build from the relevant templates folder using the nix shell:
@@ -78,6 +89,7 @@ allow-import-from-derivation = "true"
 ```bash
 nix develop github:input-output-hk/devx#ghc96-iog
 cd plutus-verifier
+cabal update
 cabal build -j all
 cabal test all
 ```
@@ -93,7 +105,7 @@ configure step.
 .....
 ```
 
-just try to re-run the build (may require several re-runs).
+just try to re-run the build (may require several re-runs). (cabal update helps as well)
 
 ## Running Examples
 
@@ -102,44 +114,23 @@ just try to re-run the build (may require several re-runs).
 The repository includes several example circuits:
 
 * `simple_mul` - Simple multiplication circuit with standard PLONK gates
-* `atms` - Advanced ATMS (Aggregate Threshold Multisignature) circuit for aggregating signatures with threshold
-  validation. Based on [input-output-hk/sidechains-zk](https://github.com/input-output-hk/sidechains-zk)
-* `atms_with_lookups` - A circuit that verifies ATMS signature and lookup argument
-* `lookup_table` - A circuit with lookup argument
+* `lookup_table` - Circuit with lookup arguments (4 lookups, 0 trashcans)
+* `trashcan_test` - Circuit with trashcan constraints (2 trashcans for testing)
 
-These circuits can be run in two versions: one using the GWC19 flavor of multi-open KZG, and the other using the
-multi-open protocol described in Halo2 book.
+**Note**: GWC19 support removed in midnight-proofs fork. Only Halo2 KZG multi-open protocol supported.
 
 ```bash
-# Simple multiplication circuit (Halo2 KZG)
+# Simple multiplication circuit
 cargo run --example simple_mul
 
-# Simple multiplication circuit (GWC19 KZG)
-cargo run --example simple_mul gwc_kzg
-
-# ATMS (Aggregate Threshold Multisignature) circuit Halo2 KZG
-cargo run --example atms
-
-# ATMS (Aggregate Threshold Multisignature) circuit GWC19 KZG
-cargo run --example atms gwc_kzg
-
-# ATMS with dummy lookup tables (Halo2 KZG)
-cargo run --example atms_with_lookups
-
-# ATMS with dummy lookup tables (GWC19 KZG)
-cargo run --example atms_with_lookups gwc_kzg
-
-# Lookup table circuit (Halo2 KZG)
+# Lookup table circuit (4 lookups, 0 trashcans)
 cargo run --example lookup_table
 
-# Simple multiplication circuit (GWC19 KZG)
-cargo run --example atms_with_lookups gwc_kzg
+# Trashcan test circuit (2 trashcans)
+cargo run --example trashcan_test
 
 # With detailed logging
 RUST_LOG=debug cargo run --example simple_mul
-
-# With Plutus traces (note that Plutus traces will increase contract cost!)
-RUST_LOG=debug cargo run --example simple_mul --features plutus_debug
 ```
 
 Running an example will generate the verification and proving keys for the circuit, create a proof using test public
@@ -166,26 +157,42 @@ cabal build -j all
 cabal test all
 ```
 
-## Benchmarks
+## Technical Details
 
-Below are the execution costs of Plutus scripts running the Halo2 verifier for various circuits (with multiopen KZG
-variant from Halo2 book):
+### Trashcan Support
 
-| Circuit description             | Script size<br/>(% of script limit 14kb) | CPU usage               | Mem usage         |
-|---------------------------------|------------------------------------------|-------------------------|-------------------|
-| **Simple mul**                  | 6434  (44.8%)                            | 3,729,441,762  (37.29%) | 1,549,444 (11.0%) |
-| **Lookup table**                | 11250 (78.4%)                            | 6,490,814,414  (64.91%) | 2,915,417 (20.8%) |
-| **ATMS (50 out of 90)**         | 11838 (82.5%)                            | 7,624,238,863  (76.24%) | 2,974,279 (21.2%) |
-| **ATMS (228 out of 408)**       | 11838 (82.5%)                            | 7,624,238,863  (76.24%) | 2,974,279 (21.2%) |
-| **ATMS (50/90) + lookup table** | 14128 (98.5%)                            | 9,043,652,303  (90.44%) | 3,877,297 (27.7%) |
+Trashcans (additive selectors) allow constraints to be disabled when `selector = 0`. Implementation:
 
-**Note that the benchmark numbers are approximate.** Even for the same circuit, the verifier’s execution cost may vary
-slightly depending on the specific proof being verified. This variation stems from the randomness used during proof
-generation, which can be influenced by the initial seed or the platform on which the prover runs.
+- **Expression compilation**: `Horner(constraints, trash_challenge) - (1 - selector) * trash_eval`
+- **Query generation**: 1 query per trashcan at current rotation
+- **Vanishing polynomial**: Trashcan expressions added after lookups in Horner evaluation
+
+Circuits with 0 trashcans generate no trashcan code (backward compatible).
+
+### midnight-proofs Compatibility
+
+| Component | IOG halo2_proofs | midnight-proofs | Status |
+|-----------|------------------|-----------------|--------|
+| Base version | PSE v0.2.0 fork | PSE v0.3.0 fork | Different |
+| Transcript | No trash_challenge | Always squeezes trash_challenge | Handled |
+| Trashcans | Not supported | Supported | Fully implemented |
+| Curve | BLS12-381 | BLS12-381 | Identical |
+
+### Fiat-Shamir Sequence
+
+midnight-proofs transcript order (matches generated Plutus code):
+1. VK hash, instances, advice commitments
+2. theta → lookup permuted commitments
+3. beta, gamma → permutation/lookup products
+4. **trash_challenge** → trashcan commitments
+5. vanishing commitments → y challenge
+6. evaluations → x challenge
+7. multipoint opening (x1, x2, f_commitment, x3, q_evals, x4)
 
 ## License
 
-Copyright 2025 Input Output Global
+Copyright 2025 Input Output Global (original work)
+Copyright 2025 [sbcdn](https://github.com/sbcdn) (modifications)
 
 Licensed under the Apache License, Version 2.0 (the "License"). You may not use this repository except in compliance
 with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0

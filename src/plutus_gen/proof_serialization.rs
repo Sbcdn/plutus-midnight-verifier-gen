@@ -17,6 +17,11 @@ pub fn serialize_proof(proof_file: String, proof: Vec<u8>) -> Result<(), String>
 }
 
 pub fn export_public_inputs(instances: &[&[&[Fq]]], output: &mut File) {
+    // Handle circuits with no public inputs
+    if instances.is_empty() || instances[0].is_empty() {
+        return;
+    }
+
     for instance in instances[0][0].iter() {
         let mut value = instance.to_bytes_le();
         value.reverse();

@@ -16,6 +16,7 @@ pub enum ProofExtractionSteps {
 
     TrashChallenge,
     TrashcanCommitment,
+    TrashcanEval,
 
     VanishingRand,
     RandomEval,
@@ -129,6 +130,8 @@ pub struct CircuitRepresentation {
     pub point_sets: Vec<Vec<RotationDescription>>,
     pub vanishing_queries: Vec<Query>,
     pub lookup_queries: Vec<Query>,
+    pub trashcan_queries: Vec<Query>,
+    pub compiled_trashcan_equations: Vec<String>,
 }
 
 impl CircuitRepresentation {
@@ -136,14 +139,16 @@ impl CircuitRepresentation {
     // ADVICE
     // PERMUTATION
     // LOOKUP
+    // TRASHCAN
     // FIXED
     // COMMON
     // VANISHING
-    pub fn all_queries_ordered(&self) -> [Vec<Query>; 6] {
+    pub fn all_queries_ordered(&self) -> [Vec<Query>; 7] {
         [
             self.advice_queries.clone(),
             self.permutation_queries.clone(),
             self.lookup_queries.clone(),
+            self.trashcan_queries.clone(),
             self.fixed_queries.clone(),
             self.common_queries.clone(),
             self.vanishing_queries.clone(),

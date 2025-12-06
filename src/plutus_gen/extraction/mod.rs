@@ -237,7 +237,11 @@ where
 
     circuit_description.instantiation_data.fixed_commitments = fixed_comms_vec;
     circuit_description.instantiation_data.permutation_commitments = perm_comms_vec;
-    circuit_description.instantiation_data.public_inputs_count = instances[0][0].len();
+    circuit_description.instantiation_data.public_inputs_count = if instances.is_empty() || instances[0].is_empty() {
+        0
+    } else {
+        instances[0][0].len()
+    };
     circuit_description.instantiation_data.num_trashcans = vk.cs().trashcans().len();
 
     circuit_description.instantiation_data.n_coefficient = vk.n();
@@ -329,6 +333,14 @@ where
             .push(ProofExtractionSteps::LookupEval)
     });
 
+    // Read trashcan evaluations (1 evaluation per trashcan)
+    // This matches midnight-proofs verifier.rs line 300-308
+    (0..num_trashcans).for_each(|_| {
+        circuit_description
+            .proof_extraction_steps
+            .push(ProofExtractionSteps::TrashcanEval)
+    });
+
     let mut compiled_gates: Vec<_> = vk
         .cs()
         .gates()
@@ -380,6 +392,36 @@ where
         .append(&mut compiled_gates);
 
     circuit_description.compiled_lookups_equations = compiled_lookups.iter().cloned().unzip();
+
+    // Compile trashcan expressions
+    // Formula: compressed_constraints - (1 - selector) * trash_eval
+    // Reference: midnight-zk/proofs/src/plonk/trash/verifier.rs:75-80
+    let compiled_trashcans: Vec<String> = vk
+        .cs()
+        .trashcans()
+        .iter()
+        .enumerate()
+        .map(|(idx, argument)| {
+            // Horner fold: ((0*c + e1)*c + e2)*c + ...
+            let constraint_exprs: Vec<_> = argument
+                .constraint_expressions()
+                .iter()
+                .map(compile_expressions)
+                .collect();
+
+            let folded_constraints = constraint_exprs
+                .iter()
+                .fold("scalarZero".to_string(), |acc, eval| {
+                    format!("({} * trash_challenge + {})", acc, eval)
+                });
+
+            let selector_expr = compile_expressions(argument.selector());
+
+            format!("{} - (scalarOne - ({})) * trashcanEval{}", folded_constraints, selector_expr, idx + 1)
+        })
+        .collect();
+
+    circuit_description.compiled_trashcan_equations = compiled_trashcans;
 
     //todo add stages to extract data for final pairing check preparation
 
@@ -646,6 +688,20 @@ where
             commitment: format!("lookupCommitment{:?}", idx + 1),
             evaluation: format!("product_next_eval_{:?}", idx + 1),
             point: RotationDescription::Next,
+        });
+    });
+
+    // Add trashcan queries (1 per trashcan at x_current)
+    // Reference: midnight-zk/proofs/src/plonk/trash/verifier.rs:83-90
+    let num_trashcans = circuit_description
+        .instantiation_data
+        .num_trashcans;
+
+    (0..num_trashcans).for_each(|idx| {
+        circuit_description.trashcan_queries.push(Query {
+            commitment: format!("trashcanCommitment{}", idx + 1),
+            evaluation: format!("trashcanEval{}", idx + 1),
+            point: RotationDescription::Current,
         });
     });
 

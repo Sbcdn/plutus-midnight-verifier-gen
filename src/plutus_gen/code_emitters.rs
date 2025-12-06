@@ -108,6 +108,12 @@ pub fn emit_verifier_code(
                     format!("  !trashcanCommitment{} <- M.readPoint\n", number + 1)
                 })
                 .join(""),
+            ProofExtractionSteps::TrashcanEval => section
+                .enumerate()
+                .map(|(number, _)| {
+                    format!("  !trashcanEval{} <- M.readScalar\n", number + 1)
+                })
+                .join(""),
             // section for halo2 multi open version of KZG
             ProofExtractionSteps::X1 => "  !x1 <- M.squeezeChallange\n".to_string(),
             ProofExtractionSteps::X2 => "  !x2 <- M.squeezeChallange\n".to_string(),
@@ -207,6 +213,20 @@ pub fn emit_verifier_code(
 
     data.insert("LOOKUPS".to_string(), lookup_equations);
 
+    let trashcan_count = circuit.compiled_trashcan_equations.len();
+
+    let trashcan_equations = (1..=trashcan_count)
+        .map(|id| {
+            format!(
+                "      !trashcan_expression_{} = {}\n",
+                id,
+                circuit.compiled_trashcan_equations[id - 1]
+            )
+        })
+        .join("");
+
+    data.insert("TRASHCANS".to_string(), trashcan_equations);
+
     let permutation_evals = circuit
         .permutations_evaluated_terms
         .iter()
@@ -300,6 +320,7 @@ pub fn emit_verifier_code(
     let permutations_eval_count = circuit.permutations_evaluated_terms.len();
     let sets_count = sets_lhs.len();
     let lookups_count = circuit.compiled_lookups_equations.0.len();
+    let trashcans_count = circuit.compiled_trashcan_equations.len();
 
     let mut vanishing_expressions = (1..=gates_count)
         .map(|n| format!("      !expression{} = gate_eq{}\n", n, n))
@@ -354,6 +375,18 @@ pub fn emit_verifier_code(
         .collect::<Vec<_>>();
     vanishing_expressions.extend(expressions);
 
+    // Add trashcan expressions to vanishing polynomial
+    let expressions = (1..=trashcans_count)
+        .map(|n| {
+            format!(
+                "      !expression{} = trashcan_expression_{}\n",
+                n + gates_count + permutations_eval_count + sets_count + lookups_count * 5,
+                n
+            )
+        })
+        .collect::<Vec<_>>();
+    vanishing_expressions.extend(expressions);
+
     let _expressions_count = vanishing_expressions.len();
 
     data.insert(
@@ -362,7 +395,7 @@ pub fn emit_verifier_code(
     );
 
     let mut vanishing_evaluation = "(scalarZero * y + expression1)".to_string();
-    for n in 2..=(gates_count + permutations_eval_count + sets_count + lookups_count * 5) {
+    for n in 2..=(gates_count + permutations_eval_count + sets_count + lookups_count * 5 + trashcans_count) {
         vanishing_evaluation = format!("({} * y + expression{})", vanishing_evaluation, n)
     }
     let vanishing_evaluation = format!("      !hEval = {}\n", vanishing_evaluation);
