@@ -14,6 +14,9 @@ pub enum ProofExtractionSteps {
     LookupCommitment,
     LookupEval,
 
+    TrashChallenge,
+    TrashcanCommitment,
+
     VanishingRand,
     RandomEval,
     VanishingSplit,
@@ -70,6 +73,8 @@ pub struct InstantiationSpecificData {
     pub w_values_count: usize,
 
     pub q_evaluations_count: usize,
+
+    pub num_trashcans: usize,
 }
 
 // todo handle cases with custom gates that have more rotations then those 4?

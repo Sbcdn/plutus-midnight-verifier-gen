@@ -101,6 +101,13 @@ pub fn emit_verifier_code(
                         + &format!("  !permuted_table_eval_{} <- M.readScalar\n", number + 1)
                 })
                 .join(""),
+            ProofExtractionSteps::TrashChallenge => "  !trash_challenge <- M.squeezeChallange\n".to_string(),
+            ProofExtractionSteps::TrashcanCommitment => section
+                .enumerate()
+                .map(|(number, _trashcan_commitment)| {
+                    format!("  !trashcanCommitment{} <- M.readPoint\n", number + 1)
+                })
+                .join(""),
             // section for halo2 multi open version of KZG
             ProofExtractionSteps::X1 => "  !x1 <- M.squeezeChallange\n".to_string(),
             ProofExtractionSteps::X2 => "  !x2 <- M.squeezeChallange\n".to_string(),

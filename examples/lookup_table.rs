@@ -1,5 +1,4 @@
 use midnight_curves::{Bls12, Fq, G1Projective};
-use blstrs::Base;
 use midnight_proofs::{
     plonk::{
         ProvingKey, VerifyingKey, create_proof, k_from_circuit, keygen_pk, keygen_vk, prepare,

@@ -186,6 +186,20 @@ where
             .push(ProofExtractionSteps::LookupCommitment)
     });
 
+    // Always squeeze trash_challenge (even if num_trashcans=0)
+    // This matches midnight-proofs behavior (verifier.rs line 143)
+    circuit_description
+        .proof_extraction_steps
+        .push(ProofExtractionSteps::TrashChallenge);
+
+    // Read trashcan commitments (loop will be empty if num_trashcans=0)
+    let num_trashcans = vk.cs().trashcans().len();
+    (0..num_trashcans).for_each(|_| {
+        circuit_description
+            .proof_extraction_steps
+            .push(ProofExtractionSteps::TrashcanCommitment)
+    });
+
     circuit_description
         .proof_extraction_steps
         .push(ProofExtractionSteps::VanishingRand);
@@ -218,11 +232,13 @@ where
     debug!("CS degree: {}", vk.cs().degree());
     debug!("chunk_len (degree-2): {}", vk.cs().degree() - 2);
     debug!("Expected perm chunks: {}", vk.cs().permutation().columns.chunks(vk.cs().degree() - 2).len());
+    debug!("CS num_trashcans: {}", vk.cs().trashcans().len());
     debug!("===============================================================");
 
     circuit_description.instantiation_data.fixed_commitments = fixed_comms_vec;
     circuit_description.instantiation_data.permutation_commitments = perm_comms_vec;
     circuit_description.instantiation_data.public_inputs_count = instances[0][0].len();
+    circuit_description.instantiation_data.num_trashcans = vk.cs().trashcans().len();
 
     circuit_description.instantiation_data.n_coefficient = vk.n();
     circuit_description.instantiation_data.s_g2 = params.s_g2().to_affine();
