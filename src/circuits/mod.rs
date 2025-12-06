@@ -1,4 +1,6 @@
+#[cfg(feature = "atms_circuits")]
 pub mod atms_circuit;
+#[cfg(feature = "atms_circuits")]
 pub mod atms_with_lookups_circuit;
 pub mod lookup_table_circuit;
 pub mod simple_mul_circuit;

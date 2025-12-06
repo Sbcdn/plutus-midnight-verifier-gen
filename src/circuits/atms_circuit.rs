@@ -8,7 +8,7 @@ use atms_halo2::{
     util::RegionCtx,
 };
 use blstrs::{Base, JubjubAffine};
-use halo2_proofs::{
+use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{Circuit, ConstraintSystem, Error},
 };
@@ -31,6 +31,7 @@ pub struct AtmsSignatureCircuit {
 impl Circuit<Base> for AtmsSignatureCircuit {
     type Config = AtmsConfig;
     type FloorPlanner = SimpleFloorPlanner;
+    type Params = ();
 
     fn without_witnesses(&self) -> Self {
         Self::default()

@@ -1,9 +1,9 @@
 use crate::plutus_gen::code_emitters::{emit_verifier_code, emit_vk_code};
-use crate::plutus_gen::extraction::{ExtractKZG, KzgType, extract_circuit};
-use blstrs::{Bls12, G1Projective, G2Affine, Scalar};
-use halo2_proofs::plonk::VerifyingKey;
-use halo2_proofs::poly::commitment::PolynomialCommitmentScheme;
-use halo2_proofs::poly::kzg::params::ParamsKZG;
+use crate::plutus_gen::extraction::{ExtractKZG, extract_circuit};
+use midnight_curves::{Bls12, G1Projective, G2Affine, Fq};
+use midnight_proofs::plonk::VerifyingKey;
+use midnight_proofs::poly::commitment::PolynomialCommitmentScheme;
+use midnight_proofs::poly::kzg::params::ParamsKZG;
 use std::path::Path;
 
 pub mod adjusted_types;
@@ -24,20 +24,16 @@ pub mod proof_serialization;
 /// * `Result<(), String>` - Ok(()) if the generation is successful, Err(String) otherwise
 pub fn generate_plinth_verifier<S>(
     params: &ParamsKZG<Bls12>,
-    vk: &VerifyingKey<Scalar, S>,
-    instances: &[&[&[Scalar]]],
+    vk: &VerifyingKey<Fq, S>,
+    instances: &[&[&[Fq]]],
     g2_encoder: fn(G2Affine) -> String,
 ) -> Result<(), String>
 where
-    S: PolynomialCommitmentScheme<Scalar, Commitment = G1Projective> + ExtractKZG,
+    S: PolynomialCommitmentScheme<Fq, Commitment = G1Projective> + ExtractKZG,
 {
     // static locations of files in plutus directory
-    let verifier_template_file = match S::kzg_type() {
-        KzgType::GWC19 => Path::new("plutus-verifier/templates/verification_gwc19_kzg.hbs"),
-        KzgType::Halo2MultiOpen => {
-            Path::new("plutus-verifier/templates/verification_halo2_kzg.hbs")
-        }
-    };
+    // midnight-proofs only supports Halo2 multi-open KZG
+    let verifier_template_file = Path::new("plutus-verifier/templates/verification_halo2_kzg.hbs");
 
     let vk_template_file = Path::new("plutus-verifier/templates/vk_constants.hbs");
     let verifier_generated_file =

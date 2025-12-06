@@ -1,6 +1,6 @@
 use blake2b_simd::{Params, State};
-use blstrs::{G1Projective, Scalar};
-use halo2_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
+use midnight_curves::{G1Projective, Fq};
+use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
 use log::debug;
 use std::io;
 use std::io::Read;
@@ -10,7 +10,7 @@ const BLAKE2B_PREFIX_CHALLENGE: u8 = 0;
 /// Prefix to a prover's message
 const BLAKE2B_PREFIX_COMMON: u8 = 1;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CardanoFriendlyState {
     state: State,
 }
@@ -41,25 +41,25 @@ impl TranscriptHash for CardanoFriendlyState {
     }
 }
 
-/// standard implementation for Scalar is used as only thing I had to changes was hash setup
-impl Hashable<CardanoFriendlyState> for Scalar {
+/// standard implementation for Fq is used as only thing I had to changes was hash setup
+impl Hashable<CardanoFriendlyState> for Fq {
     fn to_input(&self) -> <CardanoFriendlyState as TranscriptHash>::Input {
-        <Scalar as Hashable<State>>::to_input(self)
+        <Fq as Hashable<State>>::to_input(self)
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        <Scalar as Hashable<State>>::to_bytes(self)
+        <Fq as Hashable<State>>::to_bytes(self)
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        <Scalar as Hashable<State>>::read(buffer)
+        <Fq as Hashable<State>>::read(buffer)
     }
 }
 
-/// standard implementation for Scalar is used as only thing I had to changes was hash setup
-impl Sampleable<CardanoFriendlyState> for Scalar {
+/// standard implementation for Fq is used as only thing I had to changes was hash setup
+impl Sampleable<CardanoFriendlyState> for Fq {
     fn sample(hash_output: <CardanoFriendlyState as TranscriptHash>::Output) -> Self {
-        <Scalar as Sampleable<State>>::sample(hash_output)
+        <Fq as Sampleable<State>>::sample(hash_output)
     }
 }
 

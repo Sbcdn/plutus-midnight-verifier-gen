@@ -1,17 +1,17 @@
-use blstrs::Scalar;
-use halo2_proofs::halo2curves::group::Curve;
-use halo2_proofs::plonk::{Advice, Any, Column, Expression, Fixed, Instance, VerifyingKey};
-use halo2_proofs::poly::Rotation;
-use halo2_proofs::poly::commitment::PolynomialCommitmentScheme;
+use midnight_curves::Fq;
+use halo2curves::group::Curve;
+use midnight_proofs::plonk::{Advice, Any, Column, Expression, Fixed, Instance, VerifyingKey};
+use midnight_proofs::poly::Rotation;
+use midnight_proofs::poly::commitment::PolynomialCommitmentScheme;
 use std::io::BufWriter;
 
 pub fn get_any_query_index<S>(
-    vk: &VerifyingKey<Scalar, S>,
+    vk: &VerifyingKey<Fq, S>,
     column: Column<Any>,
     at: Rotation,
 ) -> usize
 where
-    S: PolynomialCommitmentScheme<Scalar>,
+    S: PolynomialCommitmentScheme<Fq>,
     S::Commitment: Curve,
 {
     match column.column_type() {
@@ -43,7 +43,7 @@ where
 }
 
 fn convert_polynomial<W: std::io::Write>(
-    ex: &Expression<Scalar>,
+    ex: &Expression<Fq>,
     writer: &mut W,
 ) -> std::io::Result<()> {
     match ex {
@@ -95,7 +95,7 @@ fn convert_polynomial<W: std::io::Write>(
     }
 }
 
-pub fn compile_expressions(e: &Expression<Scalar>) -> String {
+pub fn compile_expressions(e: &Expression<Fq>) -> String {
     let mut buf = BufWriter::new(Vec::new());
     let _ = convert_polynomial(e, &mut buf);
     let bytes = buf.into_inner().unwrap();

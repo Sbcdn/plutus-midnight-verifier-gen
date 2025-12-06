@@ -1,12 +1,20 @@
 [package]
-name = "plutus-halo2-verifier-gen"
+name = "plutus-midnight-verifier-gen"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
-halo2_proofs = { git = "https://github.com/input-output-hk/halo2", rev = "0bca06e58937fbe213a0530ecac9d8e0fed501d6" }
-atms-halo2 = { git = "https://github.com/input-output-hk/sidechains-zk/", rev = "e93d2ac", package = "atms-halo2" }
+# midnight-zk dependencies (replaces IOG halo2_proofs)
+# CRITICAL: Disable committed-instances feature to match IOG halo2_proofs behavior
+# NOTE: midnight-circuits removed because it force-enables committed-instances feature
+midnight-proofs = { path = "../midnight-zk/proofs", package = "midnight-proofs", default-features = false, features = ["bits", "cost-estimator", "circuit-params"] }
+midnight-curves = { path = "../midnight-zk/curves" }
+
+# Keep atms-halo2 for ATMS circuit examples (optional, uses old halo2_proofs)
+atms-halo2 = { git = "https://github.com/input-output-hk/sidechains-zk/", rev = "e93d2ac", package = "atms-halo2", optional = true }
+
+# Curve and field libraries (already compatible)
 halo2curves = { version = "0.7.0" }
 blstrs = { git = "https://github.com/davidnevadoc/blstrs", rev = "3dfe5bf" }
 
@@ -24,4 +32,15 @@ rand = "0.8"
 rand_chacha = "0.3.1"
 
 [features]
-plutus_debug = ["halo2_proofs/plutus_debug"]
+plutus_debug = []
+# ATMS circuits use old halo2_proofs via atms-halo2 dependency - enable with caution
+atms_circuits = ["atms-halo2"]
+
+# ATMS examples require the atms_circuits feature
+[[example]]
+name = "atms"
+required-features = ["atms_circuits"]
+
+[[example]]
+name = "atms_with_lookups"
+required-features = ["atms_circuits"]

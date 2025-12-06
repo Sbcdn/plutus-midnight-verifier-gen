@@ -2,8 +2,8 @@ use crate::plutus_gen::extraction::data::{
     CircuitRepresentation, ProofExtractionSteps, RotationDescription,
 };
 use crate::plutus_gen::extraction::precompute_intermediate_sets;
-use blstrs::G2Affine;
-use halo2_proofs::halo2curves::group::prime::PrimeCurveAffine;
+use midnight_curves::G2Affine;
+use halo2curves::group::prime::PrimeCurveAffine;
 use handlebars::{Handlebars, RenderError};
 use itertools::Itertools;
 use log::debug;

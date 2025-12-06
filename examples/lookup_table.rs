@@ -1,17 +1,18 @@
-use blstrs::{Base, Bls12, G1Projective, Scalar};
-use halo2_proofs::{
-    halo2curves::group::GroupEncoding,
+use midnight_curves::{Bls12, Fq, G1Projective};
+use blstrs::Base;
+use midnight_proofs::{
     plonk::{
         ProvingKey, VerifyingKey, create_proof, k_from_circuit, keygen_pk, keygen_vk, prepare,
     },
     poly::{
-        commitment::Guard, commitment::PolynomialCommitmentScheme, gwc_kzg::GwcKZGCommitmentScheme,
+        commitment::Guard, commitment::PolynomialCommitmentScheme,
         kzg::KZGCommitmentScheme, kzg::params::ParamsKZG, kzg::params::ParamsVerifierKZG,
     },
     transcript::{CircuitTranscript, Transcript},
 };
+use halo2curves::group::GroupEncoding;
 use log::info;
-use plutus_halo2_verifier_gen::{
+use plutus_midnight_verifier_gen::{
     circuits::lookup_table_circuit::LookupTest,
     plutus_gen::{
         adjusted_types::CardanoFriendlyState, extraction::ExtractKZG, generate_plinth_verifier,
@@ -32,22 +33,16 @@ fn main() {
         [] => {
             compile_lookup_table_circuit::<KZGCommitmentScheme<Bls12>>();
         }
-        [command] if command == "gwc_kzg" => {
-            compile_lookup_table_circuit::<GwcKZGCommitmentScheme<Bls12>>();
-        }
         _ => {
             println!("Usage:");
             println!("- to run the example: `cargo run --example example_name`");
-            println!(
-                "- to run the example using the GWC19 version of multi-open KZG, run: `cargo run --example example_name gwc_kzg`"
-            );
         }
     }
 }
 
 pub fn compile_lookup_table_circuit<
     S: PolynomialCommitmentScheme<
-            Scalar,
+            Fq,
             Commitment = G1Projective,
             Parameters = ParamsKZG<Bls12>,
             VerifierParameters = ParamsVerifierKZG<Bls12>,
@@ -56,7 +51,7 @@ pub fn compile_lookup_table_circuit<
     let seed = [0u8; 32]; // UNSAFE, constant seed is used for testing purposes
     let mut rng: StdRng = SeedableRng::from_seed(seed);
 
-    let circuit = LookupTest::<Scalar> {
+    let circuit = LookupTest::<Fq> {
         inputs: vec![(42, 8), (53, 7), (12, 8), (46, 8)],
         max_bit_len: 9,
         native_field: PhantomData,
@@ -64,12 +59,12 @@ pub fn compile_lookup_table_circuit<
 
     let k: u32 = k_from_circuit(&circuit);
     let kzg_params: ParamsKZG<Bls12> = ParamsKZG::<Bls12>::unsafe_setup(k, rng.clone());
-    let vk: VerifyingKey<Scalar, S> = keygen_vk(&kzg_params, &circuit).unwrap();
-    let pk: ProvingKey<Scalar, S> = keygen_pk(vk.clone(), &circuit).unwrap();
+    let vk: VerifyingKey<Fq, S> = keygen_vk(&kzg_params, &circuit).unwrap();
+    let pk: ProvingKey<Fq, S> = keygen_pk(vk.clone(), &circuit).unwrap();
 
     // no instances, just dummy 42 to make prover and verifier happy
-    let instances: &[&[&[Scalar]]] =
-        &[&[&[Base::from(42u64), Base::from(42u64), Base::from(42u64)]]];
+    let instances: &[&[&[Fq]]] =
+        &[&[&[Fq::from(42u64), Fq::from(42u64), Fq::from(42u64)]]];
     info!("Public inputs: {:?}", instances);
 
     let instances_file =

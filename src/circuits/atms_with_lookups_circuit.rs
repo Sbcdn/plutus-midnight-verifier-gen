@@ -10,11 +10,11 @@ use atms_halo2::{
 };
 use blstrs::{Base, JubjubAffine};
 use ff::Field;
-use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::plonk::{
+use midnight_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
+use midnight_proofs::plonk::{
     Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector, TableColumn,
 };
-use halo2_proofs::poly::Rotation;
+use midnight_proofs::poly::Rotation;
 use std::convert::TryInto;
 
 #[derive(Clone, Default)]
@@ -56,6 +56,7 @@ pub struct Pow2RangeConfig {
 impl Circuit<Base> for AtmsLookupCircuit {
     type Config = AtmsLookupConfig;
     type FloorPlanner = SimpleFloorPlanner;
+    type Params = ();
 
     fn without_witnesses(&self) -> Self {
         Self::default()

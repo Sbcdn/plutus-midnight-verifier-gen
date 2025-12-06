@@ -2,14 +2,14 @@ use crate::plutus_gen::extraction::data::{
     CircuitRepresentation, CommitmentData, ProofExtractionSteps, Query, RotationDescription,
 };
 use crate::plutus_gen::extraction::utils::{compile_expressions, get_any_query_index};
-use blstrs::{Bls12, G1Affine, G1Projective, Scalar};
+use midnight_curves::{Bls12, G1Affine, G1Projective, Fq};
 use ff::Field;
-use halo2_proofs::halo2curves::group::Curve;
-use halo2_proofs::halo2curves::group::prime::PrimeCurveAffine;
-use halo2_proofs::plonk::{Any, Error, VerifyingKey};
-use halo2_proofs::poly::commitment::PolynomialCommitmentScheme;
-use halo2_proofs::poly::{
-    Rotation, gwc_kzg::GwcKZGCommitmentScheme, kzg::KZGCommitmentScheme, kzg::params::ParamsKZG,
+use halo2curves::group::Curve;
+use halo2curves::group::prime::PrimeCurveAffine;
+use midnight_proofs::plonk::{Any, Error, VerifyingKey};
+use midnight_proofs::poly::commitment::PolynomialCommitmentScheme;
+use midnight_proofs::poly::{
+    Rotation, kzg::KZGCommitmentScheme, kzg::params::ParamsKZG,
 };
 use itertools::Itertools;
 use log::debug;
@@ -18,11 +18,10 @@ use std::collections::HashMap;
 pub mod data;
 mod utils;
 
-type GWC19Scheme = GwcKZGCommitmentScheme<Bls12>;
-type Halo2MultiOpenScheme = KZGCommitmentScheme<Bls12>;
+// Midnight-proofs only supports standard KZG (Halo2 multi-open), not GWC19
+type MidnightKZGScheme = KZGCommitmentScheme<Bls12>;
 
 pub enum KzgType {
-    GWC19,
     Halo2MultiOpen,
 }
 
@@ -31,43 +30,7 @@ pub trait ExtractKZG {
     fn kzg_type() -> KzgType;
 }
 
-impl ExtractKZG for GWC19Scheme {
-    fn extract_kzg_steps(
-        mut circuit_representation: CircuitRepresentation,
-    ) -> CircuitRepresentation {
-        circuit_representation
-            .proof_extraction_steps
-            .push(ProofExtractionSteps::V);
-
-        // todo double check if number of final witnesses is equal to number of different X rotations
-        let number_of_witnesses = circuit_representation
-            .all_queries_ordered()
-            .iter()
-            .flatten()
-            .map(|q| q.point.clone())
-            .unique()
-            .count();
-
-        circuit_representation.instantiation_data.w_values_count = number_of_witnesses;
-        // witnesses
-        for _ in 0..number_of_witnesses {
-            circuit_representation
-                .proof_extraction_steps
-                .push(ProofExtractionSteps::Witnesses);
-        }
-
-        circuit_representation
-            .proof_extraction_steps
-            .push(ProofExtractionSteps::U);
-        circuit_representation
-    }
-
-    fn kzg_type() -> KzgType {
-        KzgType::GWC19
-    }
-}
-
-impl ExtractKZG for Halo2MultiOpenScheme {
+impl ExtractKZG for MidnightKZGScheme {
     fn extract_kzg_steps(
         mut circuit_representation: CircuitRepresentation,
     ) -> CircuitRepresentation {
@@ -126,11 +89,11 @@ impl ExtractKZG for Halo2MultiOpenScheme {
 
 pub fn extract_circuit<S>(
     params: &ParamsKZG<Bls12>,
-    vk: &VerifyingKey<Scalar, S>,
-    instances: &[&[&[Scalar]]],
+    vk: &VerifyingKey<Fq, S>,
+    instances: &[&[&[Fq]]],
 ) -> Result<CircuitRepresentation, Error>
 where
-    S: PolynomialCommitmentScheme<Scalar, Commitment = G1Projective>,
+    S: PolynomialCommitmentScheme<Fq, Commitment = G1Projective>,
 {
     let chunk_len = vk.cs().degree() - 2;
 
@@ -159,7 +122,7 @@ where
     }
 
     let mut advice_commitments = vec![G1Affine::generator(); vk.cs().num_advice_columns()];
-    let mut challenges = vec![Scalar::ZERO; vk.cs().num_challenges()];
+    let mut challenges = vec![Fq::ZERO; vk.cs().num_challenges()];
 
     let all_phases = vk.cs().advice_column_phase();
     let max_phase = all_phases
@@ -241,26 +204,31 @@ where
         .proof_extraction_steps
         .push(ProofExtractionSteps::XCoordinate);
 
-    circuit_description.instantiation_data.fixed_commitments = vk
-        .fixed_commitments()
-        .iter()
-        .map(|p| p.to_affine())
-        .collect();
-    circuit_description
-        .instantiation_data
-        .permutation_commitments = vk
-        .permutation()
-        .commitments()
-        .iter()
-        .map(|p| p.to_affine())
-        .collect();
+    // Gather evidence: VK structure analysis
+    let fixed_comms_vec: Vec<_> = vk.fixed_commitments().iter().map(|p| p.to_affine()).collect();
+    let perm_comms_vec: Vec<_> = vk.permutation().commitments().iter().map(|p| p.to_affine()).collect();
+
+    debug!("============ VK EXTRACTION DEBUG (midnight-proofs) ============");
+    debug!("VK fixed_commitments count: {}", fixed_comms_vec.len());
+    debug!("VK permutation commitments count: {}", perm_comms_vec.len());
+    debug!("CS num_fixed_columns: {}", vk.cs().num_fixed_columns());
+    debug!("CS num_advice_columns: {}", vk.cs().num_advice_columns());
+    debug!("CS num_instance_columns: {}", vk.cs().num_instance_columns());
+    debug!("CS permutation columns count: {}", vk.cs().permutation().columns.len());
+    debug!("CS degree: {}", vk.cs().degree());
+    debug!("chunk_len (degree-2): {}", vk.cs().degree() - 2);
+    debug!("Expected perm chunks: {}", vk.cs().permutation().columns.chunks(vk.cs().degree() - 2).len());
+    debug!("===============================================================");
+
+    circuit_description.instantiation_data.fixed_commitments = fixed_comms_vec;
+    circuit_description.instantiation_data.permutation_commitments = perm_comms_vec;
     circuit_description.instantiation_data.public_inputs_count = instances[0][0].len();
 
     circuit_description.instantiation_data.n_coefficient = vk.n();
     circuit_description.instantiation_data.s_g2 = params.s_g2().to_affine();
     circuit_description.instantiation_data.omega = vk.get_domain().get_omega();
     circuit_description.instantiation_data.inverted_omega = vk.get_domain().get_omega_inv();
-    circuit_description.instantiation_data.barycentric_weight = Scalar::from(vk.n())
+    circuit_description.instantiation_data.barycentric_weight = Fq::from(vk.n())
         .invert()
         .expect("there should be an inverse");
     circuit_description
@@ -416,12 +384,10 @@ where
     // todo think about errors returned
     let first_set = sets
         .first()
-        .ok_or("unable to get first element of the set")
-        .map_err(|_e| Error::Synthesis)?;
+        .ok_or(Error::Synthesis("unable to get first element of the set".to_string()))?;
     let last_set = sets
         .last()
-        .ok_or("unable to get last element of the set")
-        .map_err(|_e| Error::Synthesis)?;
+        .ok_or(Error::Synthesis("unable to get last element of the set".to_string()))?;
     let shifted_sets: Vec<_> = sets.iter().skip(1).zip(sets.iter()).collect();
 
     let mut terms: Vec<String> = Vec::new();

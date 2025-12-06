@@ -1,4 +1,4 @@
-use blstrs::{G1Affine, G2Affine, Scalar};
+use midnight_curves::{G1Affine, G2Affine, Fq};
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ProofExtractionSteps {
@@ -46,13 +46,13 @@ pub struct InstantiationSpecificData {
     pub permutation_commitments: Vec<G1Affine>,
 
     // values as hex
-    pub scalar_delta: Scalar,
-    pub scalar_zero: Scalar,
-    pub scalar_one: Scalar,
+    pub scalar_delta: Fq,
+    pub scalar_zero: Fq,
+    pub scalar_one: Fq,
 
-    pub omega: Scalar,
-    pub inverted_omega: Scalar,
-    pub barycentric_weight: Scalar,
+    pub omega: Fq,
+    pub inverted_omega: Fq,
+    pub barycentric_weight: Fq,
 
     pub s_g2: G2Affine,
 
@@ -63,7 +63,7 @@ pub struct InstantiationSpecificData {
 
     pub blinding_factors: usize,
 
-    pub transcript_representation: Scalar,
+    pub transcript_representation: Fq,
 
     pub public_inputs_count: usize,
 
